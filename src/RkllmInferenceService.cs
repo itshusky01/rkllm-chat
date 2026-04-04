@@ -9,6 +9,8 @@ using static RKLLM.Infra.NativeBindings;
 namespace RKLLM;
 
 public sealed class RkllmInferenceService : IDisposable, IModelInferenceService {
+    private static readonly TimeSpan EmbeddingTimeout = TimeSpan.FromSeconds(30);
+
     private abstract class ActiveRequest {
         public required CancellationToken CancellationToken { get; init; }
     }
@@ -146,6 +148,8 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
                 throw new OperationCanceledException(request.CancellationToken);
             }
 
+            _logger.LogInformation("Starting embedding generation for {InputCount} input(s).", request.Inputs.Length);
+
             using var cancellationRegistration = request.CancellationToken.Register(() => {
                 if (ReferenceEquals(Volatile.Read(ref _currentRequest), request)) {
                     _runtime.Abort();
@@ -159,15 +163,29 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
                 var currentEmbedding = new TaskCompletionSource<float[]>(TaskCreationOptions.RunContinuationsAsynchronously);
                 Volatile.Write(ref _currentEmbeddingCompletion, currentEmbedding);
 
-                var resultCode = _runtime.GetEmbedding(request.Inputs[i]);
-                if (resultCode != 0 && !request.CancellationToken.IsCancellationRequested) {
-                    throw new InvalidOperationException($"rkllm_get_embedding failed with code {resultCode}.");
-                }
+                try {
+                    var resultCode = await Task.Factory.StartNew(
+                        () => _runtime.GetEmbedding(request.Inputs[i]),
+                        CancellationToken.None,
+                        TaskCreationOptions.LongRunning,
+                        TaskScheduler.Default).WaitAsync(EmbeddingTimeout, request.CancellationToken);
 
-                embeddings[i] = await currentEmbedding.Task.WaitAsync(request.CancellationToken);
-                Volatile.Write(ref _currentEmbeddingCompletion, null);
+                    if (resultCode != 0 && !request.CancellationToken.IsCancellationRequested) {
+                        throw new InvalidOperationException($"rkllm_run (embedding) failed with code {resultCode}.");
+                    }
+
+                    embeddings[i] = await currentEmbedding.Task.WaitAsync(EmbeddingTimeout, request.CancellationToken);
+                }
+                catch (TimeoutException) {
+                    _runtime.Abort();
+                    throw new TimeoutException($"Timed out while waiting for embedding output for input index {i}.");
+                }
+                finally {
+                    Volatile.Write(ref _currentEmbeddingCompletion, null);
+                }
             }
 
+            _logger.LogInformation("Embedding generation completed successfully.");
             request.Completion.TrySetResult(embeddings);
         }
         catch (OperationCanceledException exception) when (request.CancellationToken.IsCancellationRequested) {

@@ -1,0 +1,10 @@
+.git
+.gitignore
+.vscode
+bin
+obj
+dist
+ui/node_modules
+ui/.angular
+models
+libs

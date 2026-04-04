@@ -20,8 +20,7 @@ public static class OllamaEndpoints {
         endpoints.MapPost("/api/show", ShowModel);
         endpoints.MapPost("/api/generate", GenerateAsync);
         endpoints.MapPost("/api/chat", ChatAsync);
-        endpoints.MapPost("/api/embed", CreateEmbeddingsAsync);
-        endpoints.MapPost("/api/embeddings", CreateLegacyEmbeddingAsync);
+        // TODO: Re-enable `/api/embed` and `/api/embeddings`
         return endpoints;
     }
 
@@ -218,6 +217,9 @@ public static class OllamaEndpoints {
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             return Results.Empty;
         }
+        catch (TimeoutException) {
+            return TypedResults.Text("Embedding request timed out.", statusCode: StatusCodes.Status504GatewayTimeout);
+        }
     }
 
     private static async Task<IResult> CreateLegacyEmbeddingAsync(
@@ -244,6 +246,9 @@ public static class OllamaEndpoints {
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             return Results.Empty;
+        }
+        catch (TimeoutException) {
+            return TypedResults.Text("Embedding request timed out.", statusCode: StatusCodes.Status504GatewayTimeout);
         }
     }
 
