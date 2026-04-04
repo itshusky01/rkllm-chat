@@ -1,0 +1,29 @@
+# Normalize all text files to LF in the repository and working tree
+* text=auto eol=lf
+
+# Common text-based project files
+*.cs           text eol=lf
+*.csproj       text eol=lf
+*.sln          text eol=lf
+*.json         text eol=lf
+*.yaml         text eol=lf
+*.yml          text eol=lf
+*.md           text eol=lf
+*.sh           text eol=lf
+*.http         text eol=lf
+*.props        text eol=lf
+*.targets      text eol=lf
+*.xml          text eol=lf
+*.txt          text eol=lf
+
+# Binary files
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gif          binary
+*.webp         binary
+*.dll          binary
+*.so           binary
+*.a            binary
+*.lib          binary
+*.exe          binary
