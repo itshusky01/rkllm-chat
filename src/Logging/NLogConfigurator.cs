@@ -1,0 +1,23 @@
+using NLog;
+using NLog.Config;
+using NLog.Targets;
+
+namespace RKLLM.Logging;
+
+internal static class NLogConfigurator {
+    public static void Configure() {
+        var config = new LoggingConfiguration();
+
+        var consoleTarget = new ColoredConsoleTarget("console") {
+            Layout = "[${date:format=HH\\:mm\\:ss.fff}] [${logger:shortName=true}] [${uppercase:${level}}] - ${message}${onexception:inner=${newline}${exception:format=tostring}}",
+            UseDefaultRowHighlightingRules = true
+        };
+
+        config.AddTarget(consoleTarget);
+        config.AddRuleForAllLevels(consoleTarget, "RKLLM.*");
+        config.AddRule(LogLevel.Warn, LogLevel.Fatal, consoleTarget, "Microsoft.*");
+
+        LogManager.Configuration = config;
+        LogManager.ReconfigExistingLoggers();
+    }
+}

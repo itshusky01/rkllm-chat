@@ -1,8 +1,4 @@
-namespace RKLLM;
-
-public sealed class ApplicationConfig {
-    public RkllmOptions Rkllm { get; set; } = new();
-}
+namespace RKLLM.Configuration;
 
 public sealed class RkllmOptions {
     public string ModelPath { get; set; } = string.Empty;

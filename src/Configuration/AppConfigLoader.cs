@@ -1,72 +1,42 @@
+using Microsoft.Extensions.Configuration;
+
 namespace RKLLM.Configuration;
 
 public static class AppConfigLoader {
     public static ApplicationConfig Load() {
         var configPath = ResolveConfigPath();
-        var config = new ApplicationConfig();
-        var section = string.Empty;
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Path.GetDirectoryName(configPath)!)
+            .AddJsonFile(Path.GetFileName(configPath), optional: false, reloadOnChange: false)
+            .AddEnvironmentVariables()
+            .Build();
 
-        foreach (var rawLine in File.ReadLines(configPath)) {
-            if (string.IsNullOrWhiteSpace(rawLine)) {
-                continue;
-            }
+        var config = configuration.Get<ApplicationConfig>()
+            ?? throw new InvalidOperationException($"Unable to bind application configuration from '{configPath}'.");
 
-            var trimmedLine = rawLine.Trim();
-            if (trimmedLine.StartsWith('#')) {
-                continue;
-            }
-
-            if (!char.IsWhiteSpace(rawLine[0]) && trimmedLine.EndsWith(':')) {
-                section = trimmedLine[..^1];
-                continue;
-            }
-
-            if (!string.Equals(section, "rkllm", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var separatorIndex = trimmedLine.IndexOf(':');
-            if (separatorIndex <= 0) {
-                continue;
-            }
-
-            var key = trimmedLine[..separatorIndex].Trim();
-            var value = trimmedLine[(separatorIndex + 1)..].Trim().Trim('"', '\'');
-
-            switch (key) {
-                case "model_path":
-                    config.Rkllm.ModelPath = value;
-                    break;
-                case "port" when int.TryParse(value, out var port):
-                    config.Rkllm.Port = port;
-                    break;
-                case "platform":
-                    config.Rkllm.Platform = value;
-                    break;
-                case "max_context_len" when int.TryParse(value, out var maxContextLength):
-                    config.Rkllm.MaxContextLen = maxContextLength;
-                    break;
-            }
-        }
-
-        if (!Path.IsPathRooted(config.Rkllm.ModelPath) && !string.IsNullOrWhiteSpace(config.Rkllm.ModelPath)) {
-            config.Rkllm.ModelPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configPath)!, config.Rkllm.ModelPath));
-        }
-
+        NormalizePaths(config, Path.GetDirectoryName(configPath)!);
         return config;
     }
 
+    private static void NormalizePaths(ApplicationConfig config, string baseDirectory) {
+        if (!Path.IsPathRooted(config.Rkllm.ModelPath) && !string.IsNullOrWhiteSpace(config.Rkllm.ModelPath)) {
+            config.Rkllm.ModelPath = Path.GetFullPath(Path.Combine(baseDirectory, config.Rkllm.ModelPath));
+        }
+    }
+
     private static string ResolveConfigPath() {
-        var applicationDirectoryPath = Path.Combine(AppContext.BaseDirectory, "config.yaml");
+        const string fileName = "config.json";
+
+        var applicationDirectoryPath = Path.Combine(AppContext.BaseDirectory, fileName);
         if (File.Exists(applicationDirectoryPath)) {
             return applicationDirectoryPath;
         }
 
-        var currentDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), "config.yaml");
+        var currentDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), fileName);
         if (File.Exists(currentDirectoryPath)) {
             return currentDirectoryPath;
         }
 
-        throw new FileNotFoundException("Unable to find config.yaml in the application directory or current working directory.");
+        throw new FileNotFoundException($"Unable to find {fileName} in the application directory or current working directory.");
     }
 }

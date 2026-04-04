@@ -1,3 +1,0 @@
-rkllm:
-  model_path: "models/Qwen_w4a16.rkllm"
-  port: 8080

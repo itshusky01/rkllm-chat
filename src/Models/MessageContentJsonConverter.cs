@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace RKLLM.Models;
 
-public class OpenAIContentConverter : JsonConverter<object> {
+public class MessageContentJsonConverter : JsonConverter<object> {
     public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
         if (reader.TokenType == JsonTokenType.String) {
             return reader.GetString();

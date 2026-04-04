@@ -23,6 +23,7 @@ packages/
 # Publish / artifact folders
 artifacts/
 publish/
+dist/
 
 # Logs
 *.log

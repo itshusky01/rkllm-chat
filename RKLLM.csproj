@@ -19,7 +19,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="config.yaml">
+    <PackageReference Include="NLog" Version="5.5.0" />
+    <PackageReference Include="NLog.Extensions.Logging" Version="5.5.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>

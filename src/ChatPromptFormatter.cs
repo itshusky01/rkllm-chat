@@ -1,11 +1,12 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using RKLLM.Abstractions;
 using RKLLM.Models;
 
 namespace RKLLM;
 
-public sealed partial class OpenAIPromptFormatter : IPromptFormatter {
+public sealed partial class ChatPromptFormatter : IPromptFormatter {
     private const string MessageStartToken = "<|im_start|>";
     private const string MessageEndToken = "<|im_end|>";
     private const string DataImagePrefix = "data:image";
@@ -30,6 +31,10 @@ public sealed partial class OpenAIPromptFormatter : IPromptFormatter {
             return text;
         }
 
+        if (message.Content is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.String) {
+            return jsonElement.GetString() ?? string.Empty;
+        }
+
         if (message.Content is not Content[] contentItems) {
             return string.Empty;
         }
@@ -41,7 +46,6 @@ public sealed partial class OpenAIPromptFormatter : IPromptFormatter {
                     builder.Append(textContent.Text);
                     break;
                 case ImageContent imageContent when imageContent.ImageUrl.Url.StartsWith(DataImagePrefix, StringComparison.OrdinalIgnoreCase):
-                    // Multimodal image payloads are intentionally ignored for the text prompt path.
                     break;
             }
         }

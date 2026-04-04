@@ -1,8 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using RKLLM.Abstractions;
-using RKLLM.Models;
 using RKLLM.Infra;
+using RKLLM.Models;
 using static RKLLM.Infra.NativeBindings;
 
 namespace RKLLM;
@@ -24,15 +25,20 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
         public TaskCompletionSource<float[][]> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private readonly RKLLMWrapper _runtime;
+    private readonly RkllmWrapper _runtime;
     private readonly IPromptFormatter _promptFormatter;
+    private readonly ILogger<RkllmInferenceService> _logger;
     private ActiveRequest? _currentRequest;
     private TaskCompletionSource<float[]>? _currentEmbeddingCompletion;
     private int _busy;
 
-    public RkllmInferenceService(RKLLMWrapper runtime, IPromptFormatter promptFormatter) {
+    public RkllmInferenceService(
+        RkllmWrapper runtime,
+        IPromptFormatter promptFormatter,
+        ILogger<RkllmInferenceService> logger) {
         _runtime = runtime;
         _promptFormatter = promptFormatter;
+        _logger = logger;
         _runtime.TextGenerated += OnTextGenerated;
         _runtime.EmbeddingGenerated += OnEmbeddingGenerated;
         _runtime.StateChanged += OnStateChanged;
@@ -42,6 +48,7 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
         cancellationToken.ThrowIfCancellationRequested();
 
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0) {
+            _logger.LogWarning("Chat request rejected because the model runtime is busy.");
             responseStream = null;
             return false;
         }
@@ -74,6 +81,7 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
         cancellationToken.ThrowIfCancellationRequested();
 
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0) {
+            _logger.LogWarning("Embedding request rejected because the model runtime is busy.");
             embeddingsTask = null;
             return false;
         }
@@ -101,8 +109,8 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
                 throw new OperationCanceledException(request.CancellationToken);
             }
 
-            Console.WriteLine("Formatted Prompt:");
-            Console.WriteLine(request.Prompt);
+            _logger.LogInformation("Starting chat inference request.");
+            _logger.LogDebug("Formatted prompt: {Prompt}", request.Prompt);
 
             using var cancellationRegistration = request.CancellationToken.Register(() => {
                 if (ReferenceEquals(Volatile.Read(ref _currentRequest), request)) {
@@ -118,10 +126,12 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
             await request.Completion.Task.WaitAsync(request.CancellationToken);
         }
         catch (OperationCanceledException exception) when (request.CancellationToken.IsCancellationRequested) {
+            _logger.LogWarning(exception, "Chat inference was cancelled.");
             request.Completion.TrySetCanceled(request.CancellationToken);
             request.Output.Writer.TryComplete(exception);
         }
         catch (Exception exception) {
+            _logger.LogError(exception, "Chat inference failed.");
             request.Completion.TrySetException(exception);
             request.Output.Writer.TryComplete(exception);
         }
@@ -160,11 +170,13 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
 
             request.Completion.TrySetResult(embeddings);
         }
-        catch (OperationCanceledException) when (request.CancellationToken.IsCancellationRequested) {
+        catch (OperationCanceledException exception) when (request.CancellationToken.IsCancellationRequested) {
+            _logger.LogWarning(exception, "Embedding generation was cancelled.");
             request.Completion.TrySetCanceled(request.CancellationToken);
             Volatile.Read(ref _currentEmbeddingCompletion)?.TrySetCanceled(request.CancellationToken);
         }
         catch (Exception exception) {
+            _logger.LogError(exception, "Embedding generation failed.");
             request.Completion.TrySetException(exception);
             Volatile.Read(ref _currentEmbeddingCompletion)?.TrySetException(exception);
         }
@@ -185,8 +197,7 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
             return;
         }
 
-        Console.WriteLine("Generated Text:");
-        Console.WriteLine(text);
+        _logger.LogDebug("Generated text chunk: {Text}", text);
         request.Output.Writer.TryWrite(text);
     }
 
@@ -195,6 +206,7 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
             return;
         }
 
+        _logger.LogDebug("Embedding vector received with {Length} dimensions.", embedding.Length);
         Volatile.Read(ref _currentEmbeddingCompletion)?.TrySetResult(embedding);
     }
 
@@ -206,10 +218,12 @@ public sealed class RkllmInferenceService : IDisposable, IModelInferenceService 
 
         switch (state) {
             case LLMCallState.Finish when request is ActiveChatRequest chatRequest:
+                _logger.LogInformation("Chat inference completed successfully.");
                 chatRequest.Completion.TrySetResult();
                 break;
             case LLMCallState.Error:
                 var exception = new InvalidOperationException("RKLLM runtime error.");
+                _logger.LogError(exception, "RKLLM runtime reported an error state.");
                 if (request is ActiveChatRequest chat) {
                     chat.Completion.TrySetException(exception);
                     chat.Output.Writer.TryComplete(exception);
