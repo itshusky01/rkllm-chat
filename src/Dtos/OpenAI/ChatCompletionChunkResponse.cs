@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class ChatCompletionChunkResponse {
     public string Id { get; set; } = string.Empty;

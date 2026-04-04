@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class OllamaChatResponse {
     public string Model { get; set; } = string.Empty;

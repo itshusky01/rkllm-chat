@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace RKLLM.Infra;
+namespace RkllmChat.Infra;
 
 public static class NativeBindings {
     public const string LibraryName = "librkllmrt.so";

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class OllamaGenerateRequest {
     public string Model { get; set; } = string.Empty;

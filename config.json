@@ -3,6 +3,7 @@
     "ModelPath": "models/Qwen_w4a16.rkllm",
     "Port": 8080,
     "Platform": "rk3576",
-    "MaxContextLen": 4096
+    "MaxContextLen": 4096,
+    "TempImageDirectory": "/tmp/multimodal-images"
   }
 }

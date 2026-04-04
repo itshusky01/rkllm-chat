@@ -1,6 +1,6 @@
-using RKLLM.Models;
+using RkllmChat.Models;
 
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class ChatCompletionRequest {
     public Message[] Messages { get; set; } = [];

@@ -1,7 +1,7 @@
 using System.Text.Json;
-using RKLLM.Models;
+using RkllmChat.Models;
 
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class OllamaChatRequest {
     public string Model { get; set; } = string.Empty;

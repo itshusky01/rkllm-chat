@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace RKLLM.Configuration;
+namespace RkllmChat.Configuration;
 
 public static class AppConfigLoader {
     public static ApplicationConfig Load() {
@@ -21,6 +21,10 @@ public static class AppConfigLoader {
     private static void NormalizePaths(ApplicationConfig config, string baseDirectory) {
         if (!Path.IsPathRooted(config.Rkllm.ModelPath) && !string.IsNullOrWhiteSpace(config.Rkllm.ModelPath)) {
             config.Rkllm.ModelPath = Path.GetFullPath(Path.Combine(baseDirectory, config.Rkllm.ModelPath));
+        }
+
+        if (!Path.IsPathRooted(config.Rkllm.TempImageDirectory) && !string.IsNullOrWhiteSpace(config.Rkllm.TempImageDirectory)) {
+            config.Rkllm.TempImageDirectory = Path.GetFullPath(Path.Combine(baseDirectory, config.Rkllm.TempImageDirectory));
         }
     }
 

@@ -2,7 +2,7 @@ using NLog;
 using NLog.Config;
 using NLog.Targets;
 
-namespace RKLLM.Logging;
+namespace RkllmChat.Logging;
 
 internal static class NLogConfigurator {
     public static void Configure() {

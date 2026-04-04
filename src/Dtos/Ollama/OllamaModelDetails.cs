@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class OllamaModelDetails {
     public string ParentModel { get; set; } = string.Empty;

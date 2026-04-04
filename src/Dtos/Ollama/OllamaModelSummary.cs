@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public class OllamaModelSummary {
     public string Name { get; set; } = string.Empty;

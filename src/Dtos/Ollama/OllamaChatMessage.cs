@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class OllamaChatMessage {
     public string Role { get; set; } = "assistant";

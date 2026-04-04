@@ -1,12 +1,12 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using RKLLM.Abstractions;
-using RKLLM.Infra;
-using RKLLM.Models;
-using static RKLLM.Infra.NativeBindings;
+using RkllmChat.Abstractions;
+using RkllmChat.Infra;
+using RkllmChat.Models;
+using static RkllmChat.Infra.NativeBindings;
 
-namespace RKLLM;
+namespace RkllmChat;
 
 public sealed class RkllmInferenceService : IDisposable, IModelInferenceService {
     private static readonly TimeSpan EmbeddingTimeout = TimeSpan.FromSeconds(30);

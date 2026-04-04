@@ -1,10 +1,10 @@
 using System.Text.Json.Serialization;
-using RKLLM.Dtos;
-using RKLLM.Models;
+using RkllmChat.Dtos;
+using RkllmChat.Models;
 
 using StringDictionary = System.Collections.Generic.Dictionary<string, string>;
 
-namespace RKLLM;
+namespace RkllmChat;
 
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,

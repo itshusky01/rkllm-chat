@@ -1,4 +1,4 @@
-namespace RKLLM;
+namespace RkllmChat;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -6,12 +6,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NLog.Extensions.Logging;
-using RKLLM.Abstractions;
-using RKLLM.Configuration;
-using RKLLM.Controllers;
-using RKLLM.Dtos;
-using RKLLM.Infra;
-using RKLLM.Logging;
+using RkllmChat.Abstractions;
+using RkllmChat.Configuration;
+using RkllmChat.Controllers;
+using RkllmChat.Dtos;
+using RkllmChat.Infra;
+using RkllmChat.Logging;
 
 public class Program {
     public static void Main(string[] args) {
@@ -46,6 +46,11 @@ public class Program {
         var logger = app.Services.GetRequiredService<ILogger<Program>>();
         var webRootPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
         var indexFilePath = Path.Combine(webRootPath, "index.html");
+
+        if (!string.IsNullOrWhiteSpace(applicationConfig.Rkllm.TempImageDirectory)) {
+            Directory.CreateDirectory(applicationConfig.Rkllm.TempImageDirectory);
+            logger.LogInformation("Multimodal temp image directory ready at {TempImageDirectory}", applicationConfig.Rkllm.TempImageDirectory);
+        }
 
         logger.LogInformation("RKLLM server configured on port {Port} with model {Model}", applicationConfig.Rkllm.Port, applicationConfig.Rkllm.ModelPath);
         logger.LogInformation("Initializing RKLLM runtime at startup...");

@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using static RKLLM.Infra.NativeBindings;
+using static RkllmChat.Infra.NativeBindings;
 
-namespace RKLLM.Infra;
+namespace RkllmChat.Infra;
 
 public sealed class RkllmWrapper : IDisposable {
     private readonly RKLLMResultCallback _callback;

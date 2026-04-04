@@ -4,6 +4,17 @@ import { FormsModule } from '@angular/forms';
 
 type ChatRole = 'user' | 'assistant';
 
+interface ImageAttachment {
+  name: string;
+  dataUrl: string;
+}
+
+type MessagePayloadPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+type MessagePayloadContent = string | MessagePayloadPart[];
+
 interface ChatMessage {
   id: number;
   role: ChatRole;
@@ -11,6 +22,8 @@ interface ChatMessage {
   time: string;
   includeInContext: boolean;
   streaming: boolean;
+  attachments: ImageAttachment[];
+  requestContent: MessagePayloadContent;
 }
 
 interface OllamaTagsResponse {
@@ -48,6 +61,8 @@ export class App {
   protected readonly model = signal('');
   protected readonly systemPrompt = signal('You are a concise, helpful assistant. Always reply in English.');
   protected readonly composer = signal('');
+  protected readonly pendingImages = signal<ImageAttachment[]>([]);
+  protected readonly isDragOver = signal(false);
   protected readonly loading = signal(false);
   protected readonly refreshingModels = signal(false);
   protected readonly status = signal<'connecting' | 'ready' | 'error'>('connecting');
@@ -57,7 +72,12 @@ export class App {
     this.createMessage('assistant', 'Hi, I\'m ready. Ask anything.', false)
   ]);
 
-  protected readonly canSend = computed(() => !this.loading() && this.composer().trim().length > 0 && this.model().trim().length > 0);
+  protected readonly canSend = computed(
+    () =>
+      !this.loading() &&
+      this.model().trim().length > 0 &&
+      (this.composer().trim().length > 0 || this.pendingImages().length > 0)
+  );
   protected readonly statusLabel = computed(() => {
     switch (this.status()) {
       case 'ready':
@@ -108,7 +128,8 @@ export class App {
 
   protected async sendMessage(prefill?: string): Promise<void> {
     const content = (prefill ?? this.composer()).trim();
-    if (!content || this.loading()) {
+    const attachments = [...this.pendingImages()];
+    if ((!content && attachments.length === 0) || this.loading()) {
       return;
     }
 
@@ -119,25 +140,27 @@ export class App {
 
     this.errorMessage.set('');
 
-    const userMessage = this.createMessage('user', content);
+    const requestContent = this.buildRequestContent(content, attachments);
+    const userMessage = this.createMessage('user', content, true, false, requestContent, attachments);
     const conversation = [
       ...this.messages()
         .filter((item) => item.includeInContext)
-        .map(({ role, content: messageContent }) => ({ role, content: messageContent })),
-      { role: 'user', content }
+        .map(({ role, requestContent: messageContent }) => ({ role, content: messageContent })),
+      { role: 'user', content: requestContent }
     ];
 
     const assistantMessage = this.createMessage('assistant', '', false, true);
 
     this.messages.update((items) => [...items, userMessage, assistantMessage]);
     this.composer.set('');
+    this.pendingImages.set([]);
     this.loading.set(true);
 
     try {
       const payload: {
         model?: string;
         stream: boolean;
-        messages: Array<{ role: string; content: string }>;
+        messages: Array<{ role: string; content: MessagePayloadContent }>;
       } = {
         stream: true,
         messages: [
@@ -171,6 +194,7 @@ export class App {
       this.updateMessage(assistantMessage.id, (message) => ({
         ...message,
         content: finalContent,
+        requestContent: finalContent,
         includeInContext: true,
         streaming: false
       }));
@@ -194,7 +218,51 @@ export class App {
     this.messages.set([
       this.createMessage('assistant', 'Chat cleared. Start a new conversation anytime.', false)
     ]);
+    this.pendingImages.set([]);
     this.errorMessage.set('');
+  }
+
+  protected async handleImageSelection(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+
+    await this.appendImageFiles(files);
+    input.value = '';
+  }
+
+  protected handleDragOver(event: DragEvent): void {
+    event.preventDefault();
+
+    if (!this.hasImageFiles(event.dataTransfer)) {
+      return;
+    }
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+
+    this.isDragOver.set(true);
+  }
+
+  protected handleDragLeave(event: DragEvent): void {
+    const currentTarget = event.currentTarget as HTMLElement | null;
+    const relatedTarget = event.relatedTarget as Node | null;
+
+    if (!currentTarget || !relatedTarget || !currentTarget.contains(relatedTarget)) {
+      this.isDragOver.set(false);
+    }
+  }
+
+  protected async handleDrop(event: DragEvent): Promise<void> {
+    event.preventDefault();
+    this.isDragOver.set(false);
+
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    await this.appendImageFiles(files);
+  }
+
+  protected removePendingImage(index: number): void {
+    this.pendingImages.update((items) => items.filter((_, currentIndex) => currentIndex !== index));
   }
 
   protected handleKeydown(event: KeyboardEvent): void {
@@ -316,6 +384,70 @@ export class App {
     return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
   }
 
+  private async appendImageFiles(files: File[]): Promise<void> {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      return;
+    }
+
+    try {
+      const attachments = await Promise.all(imageFiles.map((file) => this.toImageAttachment(file)));
+      this.pendingImages.update((items) => [...items, ...attachments]);
+      this.errorMessage.set('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not read image file';
+      this.errorMessage.set(`Failed to load image: ${message}`);
+    }
+  }
+
+  private hasImageFiles(dataTransfer: DataTransfer | null): boolean {
+    if (!dataTransfer) {
+      return false;
+    }
+
+    return Array.from(dataTransfer.items).some(
+      (item) => item.kind === 'file' && item.type.startsWith('image/')
+    );
+  }
+
+  private buildRequestContent(content: string, attachments: ImageAttachment[]): MessagePayloadContent {
+    if (attachments.length === 0) {
+      return content;
+    }
+
+    const parts: MessagePayloadPart[] = attachments.map((attachment) => ({
+      type: 'image_url',
+      image_url: {
+        url: attachment.dataUrl
+      }
+    }));
+
+    if (content) {
+      parts.push({
+        type: 'text',
+        text: content
+      });
+    }
+
+    return parts;
+  }
+
+  private async toImageAttachment(file: File): Promise<ImageAttachment> {
+    return {
+      name: file.name,
+      dataUrl: await this.readFileAsDataUrl(file)
+    };
+  }
+
+  private readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(reader.error ?? new Error(`Failed to read ${file.name}`));
+      reader.readAsDataURL(file);
+    });
+  }
+
   private updateMessage(messageId: number, updater: (message: ChatMessage) => ChatMessage): void {
     this.messages.update((items) =>
       items.map((item) => (item.id === messageId ? updater(item) : item))
@@ -334,7 +466,14 @@ export class App {
     return `${base}${suffix}`;
   }
 
-  private createMessage(role: ChatRole, content: string, includeInContext = true, streaming = false): ChatMessage {
+  private createMessage(
+    role: ChatRole,
+    content: string,
+    includeInContext = true,
+    streaming = false,
+    requestContent: MessagePayloadContent = content,
+    attachments: ImageAttachment[] = []
+  ): ChatMessage {
     return {
       id: Date.now() + Math.floor(Math.random() * 1000),
       role,
@@ -344,7 +483,9 @@ export class App {
         minute: '2-digit'
       }).format(new Date()),
       includeInContext,
-      streaming
+      streaming,
+      attachments,
+      requestContent
     };
   }
 }

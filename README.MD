@@ -1,4 +1,4 @@
-# RKLLM
+# RkllmChat
 
 基于 RKLLM Runtime 和 .NET 10 Minimal API 的本地推理服务，封装了 OpenAI 兼容接口（`/v1/*`）和 Ollama 兼容接口（`/api/*`），并包含一个简单的 Angular 前端。
 
@@ -47,6 +47,7 @@
 | `Port` | 服务监听端口，默认 `8080` |
 | `Platform` | 平台类型，如 `rk3576` / `rk3588` |
 | `MaxContextLen` | 最大上下文长度 |
+| `TempImageDirectory` | 多模态图片临时目录，启动时不存在会自动创建 |
 
 ---
 
@@ -63,8 +64,10 @@
 
 以下命令应在 RK 设备上执行：
 
+服务启动时会检查 `TempImageDirectory`，如果目录不存在会自动创建。多模态请求中的 Base64 图片会先落到该目录，再以 `<image>路径</image>` 的形式传给 RKLLM。
+
 ```bash
-dotnet run --project RKLLM.csproj
+dotnet run --project RkllmChat.csproj
 ```
 
 服务默认地址：
@@ -169,6 +172,12 @@ chmod +x scripts/build.sh
 dist/rkllm-linux-arm64.tar.gz
 ```
 
+发布目录中的服务可执行文件名为：
+
+```text
+rkllm-chat-server
+```
+
 也可以通过环境变量覆盖目标运行时：
 
 ```bash
@@ -189,7 +198,7 @@ docker buildx build \
 
 导出后可在 `docker-out/` 中看到：
 
-- `rkllm-linux-arm64/`：发布目录
+- `rkllm-linux-arm64/`：发布目录，其中主程序为 `rkllm-chat-server`
 - `rkllm-linux-arm64.tar.gz`：压缩包
 
 > 如果是在非 ARM 主机上构建 `linux-arm64`，需要可用的 `buildx` / QEMU 环境。

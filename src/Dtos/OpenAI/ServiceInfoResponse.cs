@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class ServiceInfoResponse {
     public string Service { get; set; } = "RKLLM";

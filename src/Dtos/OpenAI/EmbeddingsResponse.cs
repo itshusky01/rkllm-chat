@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class EmbeddingsResponse {
     public string Object { get; set; } = "list";

@@ -1,4 +1,4 @@
-namespace RKLLM.Dtos;
+namespace RkllmChat.Dtos;
 
 public sealed class EmbeddingsUsage {
     public int PromptTokens { get; set; }

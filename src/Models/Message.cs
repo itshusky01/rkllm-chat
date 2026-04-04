@@ -1,4 +1,4 @@
-namespace RKLLM.Models;
+namespace RkllmChat.Models;
 
 using System.Text.Json.Serialization;
 

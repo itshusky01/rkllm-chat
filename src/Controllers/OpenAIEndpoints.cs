@@ -2,11 +2,11 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using RKLLM.Abstractions;
-using RKLLM.Configuration;
-using RKLLM.Dtos;
+using RkllmChat.Abstractions;
+using RkllmChat.Configuration;
+using RkllmChat.Dtos;
 
-namespace RKLLM.Controllers;
+namespace RkllmChat.Controllers;
 
 public static class OpenAIEndpoints {
     public static IEndpointRouteBuilder MapOpenAIEndpoints(this IEndpointRouteBuilder endpoints) {

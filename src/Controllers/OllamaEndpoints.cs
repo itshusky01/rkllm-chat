@@ -5,12 +5,12 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using RKLLM.Abstractions;
-using RKLLM.Configuration;
-using RKLLM.Dtos;
-using RKLLM.Models;
+using RkllmChat.Abstractions;
+using RkllmChat.Configuration;
+using RkllmChat.Dtos;
+using RkllmChat.Models;
 
-namespace RKLLM.Controllers;
+namespace RkllmChat.Controllers;
 
 public static class OllamaEndpoints {
     public static IEndpointRouteBuilder MapOllamaEndpoints(this IEndpointRouteBuilder endpoints) {

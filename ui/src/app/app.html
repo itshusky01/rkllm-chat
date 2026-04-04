@@ -81,6 +81,25 @@
                 [class.ring-1]="message.streaming && message.role !== 'user'"
                 [class.ring-[#007acc]/40]="message.streaming && message.role !== 'user'"
               >
+                @if (message.attachments.length) {
+                  <div class="mb-3 flex flex-wrap gap-2">
+                    @for (image of message.attachments; track image.dataUrl) {
+                      <a
+                        class="block overflow-hidden rounded-lg border border-white/15 bg-black/10"
+                        [href]="image.dataUrl"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <img
+                          class="h-28 w-28 object-cover"
+                          [src]="image.dataUrl"
+                          [alt]="image.name"
+                        />
+                      </a>
+                    }
+                  </div>
+                }
+
                 @if (message.content) {
                   <p class="whitespace-pre-wrap break-words">{{ message.content }}</p>
                 }
@@ -107,7 +126,17 @@
     </section>
 
     <footer class="border-t border-[#2d2d30] bg-[#181818] px-3 py-3 sm:px-4 sm:py-4">
-      <div class="mx-auto max-w-5xl rounded-xl border border-[#3c3c3c] bg-[#252526] p-3 shadow-lg shadow-black/20 sm:p-4">
+      <div
+        class="mx-auto max-w-5xl rounded-xl border border-[#3c3c3c] bg-[#252526] p-3 shadow-lg shadow-black/20 transition sm:p-4"
+        [class.border-[#1177bb]]="isDragOver()"
+        [class.ring-2]="isDragOver()"
+        [class.ring-[#1177bb]/40]="isDragOver()"
+        [class.bg-[#1f2a33]]="isDragOver()"
+        (dragenter)="handleDragOver($event)"
+        (dragover)="handleDragOver($event)"
+        (dragleave)="handleDragLeave($event)"
+        (drop)="handleDrop($event)"
+      >
         <textarea
           rows="3"
           class="min-h-20 w-full resize-none bg-transparent px-1 py-1 text-sm text-[#d4d4d4] outline-none placeholder:text-[#858585] sm:min-h-24"
@@ -117,8 +146,47 @@
           placeholder="Message... Press Ctrl/Cmd + Enter to send"
         ></textarea>
 
+        <div class="mt-2 px-1 text-xs" [class.text-[#75beff]]="isDragOver()" [class.text-[#858585]]="!isDragOver()">
+          {{ isDragOver() ? 'Drop images to attach them.' : 'Drop images here or click Image.' }}
+        </div>
+
+        @if (pendingImages().length) {
+          <div class="mt-3 flex flex-wrap gap-2 border-t border-[#3c3c3c] pt-3">
+            @for (image of pendingImages(); track image.dataUrl; let i = $index) {
+              <div class="relative overflow-hidden rounded-lg border border-[#3c3c3c] bg-[#1e1e1e]">
+                <img class="h-20 w-20 object-cover" [src]="image.dataUrl" [alt]="image.name" />
+                <button
+                  type="button"
+                  class="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[11px] text-white"
+                  (click)="removePendingImage(i)"
+                >
+                  ×
+                </button>
+              </div>
+            }
+          </div>
+        }
+
         <div class="mt-3 flex items-center justify-between gap-3 border-t border-[#3c3c3c] pt-3 text-sm text-[#858585] max-sm:flex-col max-sm:items-stretch">
-          <span>AI can make mistakes.</span>
+          <div class="flex items-center gap-2">
+            <input
+              #imagePicker
+              type="file"
+              accept="image/*"
+              multiple
+              class="hidden"
+              (change)="handleImageSelection($event)"
+            />
+            <button
+              type="button"
+              class="rounded-md border border-[#3c3c3c] bg-[#2d2d30] px-3 py-2 text-sm text-[#d4d4d4] transition hover:bg-[#37373d]"
+              (click)="imagePicker.click()"
+            >
+              Image
+            </button>
+            <span>AI can make mistakes.</span>
+          </div>
+
           <button
             type="button"
             class="rounded-md bg-[#0e639c] px-5 py-2.5 font-semibold text-white transition hover:bg-[#1177bb] disabled:cursor-not-allowed disabled:opacity-60"
