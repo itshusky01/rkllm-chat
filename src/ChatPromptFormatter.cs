@@ -12,53 +12,106 @@ public sealed partial class ChatPromptFormatter : IPromptFormatter {
     private const string MessageStartToken = "<|im_start|>";
     private const string MessageEndToken = "<|im_end|>";
     private const string DataImagePrefix = "data:image";
+    private const string ImagePlaceholder = "<image></image>";
 
-    private readonly string _tempImageDirectory;
     private readonly ILogger<ChatPromptFormatter> _logger;
 
     [GeneratedRegex(@"<think>.*?</think>", RegexOptions.Singleline)]
     private static partial Regex ThinkBlockRegex();
 
-    public ChatPromptFormatter(RkllmOptions options, ILogger<ChatPromptFormatter> logger) {
-        _tempImageDirectory = options.TempImageDirectory;
+    public ChatPromptFormatter(ILogger<ChatPromptFormatter> logger) {
         _logger = logger;
     }
 
     public string FormatChatPrompt(IReadOnlyList<Message> messages, bool enableThinking) {
         var promptBuilder = new StringBuilder();
 
+        bool isMultimodal = messages.Any(m => {
+            var items = GetContentItems(m);
+            return items?.Any(c => c is ImageContent) ?? false;
+        });
+
         foreach (var message in messages) {
-            var content = ThinkBlockRegex().Replace(ExtractTextContent(message), string.Empty);
-            promptBuilder.Append($"{MessageStartToken}{message.Role}\n{content}\n{(enableThinking ? string.Empty : " /nothink")}{MessageEndToken}");
+            var rawContent = ExtractTextContent(message);
+            var content = ThinkBlockRegex().Replace(rawContent, string.Empty).Trim();
+
+            promptBuilder.Append($"{MessageStartToken}{message.Role}\n{content}");
+
+            if (isMultimodal) {
+                promptBuilder.Append(MessageEndToken);
+            }
+            else {
+                promptBuilder.Append($"\n{(enableThinking ? string.Empty : " /nothink")}{MessageEndToken}");
+            }
+
+            promptBuilder.Append('\n');
         }
 
         promptBuilder.Append($"{MessageStartToken}assistant\n");
+
         return promptBuilder.ToString();
     }
 
+    public (IReadOnlyList<byte[]> Images, string TextPrompt) ExtractImages(IReadOnlyList<Message> messages) {
+        var images = new List<byte[]>();
+        var textParts = new List<string>();
+
+        for (var i = messages.Count - 1; i >= 0; i--) {
+            var message = messages[i];
+            if (!string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var contentItems = GetContentItems(message);
+            if (contentItems is null) {
+                continue;
+            }
+
+            bool foundImageInThisMessage = false;
+            foreach (var item in contentItems) {
+                switch (item) {
+                    case ImageContent imageContent:
+                        var imageUrl = imageContent.ImageUrl.Url;
+                        if (string.IsNullOrWhiteSpace(imageUrl)) {
+                            continue;
+                        }
+
+                        if (imageUrl.StartsWith(DataImagePrefix, StringComparison.OrdinalIgnoreCase)) {
+                            try {
+                                var commaIndex = imageUrl.IndexOf(',');
+                                if (commaIndex >= 0 && commaIndex < imageUrl.Length - 1) {
+                                    var encoded = imageUrl[(commaIndex + 1)..];
+                                    var decodedBytes = Convert.FromBase64String(encoded);
+                                    images.Add(decodedBytes);
+                                    foundImageInThisMessage = true;
+                                }
+                            }
+                            catch (Exception ex) {
+                                _logger.LogWarning(ex, "Failed to decode base64 image content.");
+                            }
+                        }
+                        break;
+
+                    case TextContent textContent when !string.IsNullOrWhiteSpace(textContent.Text):
+                        textParts.Add(textContent.Text.Trim());
+                        break;
+                }
+            }
+
+            if (foundImageInThisMessage) {
+                break;
+            }
+        }
+
+        var textPrompt = textParts.Count > 0 ? string.Join(' ', textParts) : "Describe this image.";
+        return (images, textPrompt);
+    }
+
     private string ExtractTextContent(Message message) {
-        if (message.Content is string text) {
-            return text;
-        }
+        if (message.Content is string text) return text;
 
-        Content[]? contentItems = null;
-
-        if (message.Content is JsonElement jsonElement) {
-            if (jsonElement.ValueKind == JsonValueKind.String) {
-                return jsonElement.GetString() ?? string.Empty;
-            }
-
-            if (jsonElement.ValueKind == JsonValueKind.Array) {
-                contentItems = jsonElement.Deserialize(AppJsonSerializerContext.Default.ContentArray);
-            }
-        }
-        else if (message.Content is Content[] typedContentItems) {
-            contentItems = typedContentItems;
-        }
-
-        if (contentItems is null) {
-            return string.Empty;
-        }
+        var contentItems = GetContentItems(message);
+        if (contentItems is null) return string.Empty;
 
         var builder = new StringBuilder();
         foreach (var item in contentItems) {
@@ -66,69 +119,21 @@ public sealed partial class ChatPromptFormatter : IPromptFormatter {
                 case TextContent textContent:
                     builder.Append(textContent.Text);
                     break;
-                case ImageContent imageContent:
-                    var imagePath = ResolveImagePath(imageContent.ImageUrl.Url);
-                    if (!string.IsNullOrWhiteSpace(imagePath)) {
-                        builder.Append("<image>");
-                        builder.Append(imagePath);
-                        builder.AppendLine("</image>");
-                    }
+                case ImageContent:
+                    builder.Append(ImagePlaceholder);
                     break;
             }
         }
-
         return builder.ToString();
     }
 
-    private string ResolveImagePath(string imageUrl) {
-        if (string.IsNullOrWhiteSpace(imageUrl)) {
-            return string.Empty;
-        }
-
-        if (!imageUrl.StartsWith(DataImagePrefix, StringComparison.OrdinalIgnoreCase)) {
-            return imageUrl;
-        }
-
-        try {
-            var commaIndex = imageUrl.IndexOf(',');
-            if (commaIndex < 0 || commaIndex == imageUrl.Length - 1) {
-                throw new FormatException("Invalid data URL for image content.");
+    private static Content[]? GetContentItems(Message message) {
+        if (message.Content is JsonElement jsonElement) {
+            if (jsonElement.ValueKind == JsonValueKind.Array) {
+                return jsonElement.Deserialize(AppJsonSerializerContext.Default.ContentArray);
             }
-
-            var header = imageUrl[..commaIndex];
-            var encoded = imageUrl[(commaIndex + 1)..];
-            var imageData = Convert.FromBase64String(encoded);
-            var extension = GetImageExtension(header);
-
-            Directory.CreateDirectory(_tempImageDirectory);
-            var tempFilePath = Path.Combine(_tempImageDirectory, $"rkllm_vis_{Guid.NewGuid():N}.{extension}");
-            File.WriteAllBytes(tempFilePath, imageData);
-            return tempFilePath;
+            return null;
         }
-        catch (Exception exception) {
-            _logger.LogWarning(exception, "Failed to materialize inline image content into a temp file.");
-            return string.Empty;
-        }
-    }
-
-    private static string GetImageExtension(string dataUrlHeader) {
-        if (dataUrlHeader.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ||
-            dataUrlHeader.Contains("jpg", StringComparison.OrdinalIgnoreCase)) {
-            return "jpg";
-        }
-
-        if (dataUrlHeader.Contains("webp", StringComparison.OrdinalIgnoreCase)) {
-            return "webp";
-        }
-
-        if (dataUrlHeader.Contains("gif", StringComparison.OrdinalIgnoreCase)) {
-            return "gif";
-        }
-
-        if (dataUrlHeader.Contains("bmp", StringComparison.OrdinalIgnoreCase)) {
-            return "bmp";
-        }
-
-        return "png";
+        return message.Content as Content[];
     }
 }

@@ -1,9 +1,20 @@
 namespace RkllmChat.Configuration;
 
-public sealed class RkllmOptions {
+public sealed class AppOptions {
+    public ServerOptions Server { get; set; } = new();
     public string ModelPath { get; set; } = string.Empty;
-    public int Port { get; set; } = 8080;
+    public VlModelOptions? VlModel { get; set; }
+    public LlmOptions Llm { get; set; } = new();
     public string Platform { get; set; } = "rk3576";
     public int MaxContextLen { get; set; } = 4096;
-    public string TempImageDirectory { get; set; } = Path.Combine(Path.GetTempPath(), "rkllm-images");
+
+    public int Port {
+        get => Server.Port;
+        set => Server.Port = value;
+    }
+
+    public string Host {
+        get => Server.Host;
+        set => Server.Host = value;
+    }
 }

@@ -1,9 +1,24 @@
 {
   "Rkllm": {
+    "Server": {
+      "Host": "0.0.0.0",
+      "Port": 8080
+    },
     "ModelPath": "models/Qwen_w4a16.rkllm",
-    "Port": 8080,
     "Platform": "rk3576",
     "MaxContextLen": 4096,
-    "TempImageDirectory": "/tmp/multimodal-images"
+    "Llm": {
+      "MaxNewTokens": 8192,
+      "TopK": 50,
+      "TopP": 0.95,
+      "Temperature": 0.7,
+      "RepeatPenalty": 1.1
+    },
+    "VlModel": {
+      "CoreMask": 3,
+      "Width": 448,
+      "Height": 448,
+      "Path": "models/vision.rknn"
+    }
   }
 }

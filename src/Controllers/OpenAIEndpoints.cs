@@ -11,7 +11,6 @@ namespace RkllmChat.Controllers;
 public static class OpenAIEndpoints {
     public static IEndpointRouteBuilder MapOpenAIEndpoints(this IEndpointRouteBuilder endpoints) {
         endpoints.MapPost("/v1/chat/completions", StreamChatCompletionAsync);
-        // TODO: Re-enable `/v1/embeddings`
         return endpoints;
     }
 
@@ -19,7 +18,7 @@ public static class OpenAIEndpoints {
         HttpContext httpContext,
         ChatCompletionRequest request,
         IModelInferenceService inferenceService,
-        RkllmOptions options,
+        AppOptions options,
         CancellationToken cancellationToken) {
         httpContext.Response.ContentType = "text/event-stream";
         var createdTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -73,73 +72,5 @@ public static class OpenAIEndpoints {
         await httpContext.Response.Body.FlushAsync(cancellationToken);
     }
 
-    private static async Task<IResult> CreateEmbeddingsAsync(
-        EmbeddingRequest request,
-        IModelInferenceService inferenceService,
-        RkllmOptions options,
-        CancellationToken cancellationToken) {
-        if (!TryParseEmbeddingInput(request.Input, out var inputs)) {
-            return TypedResults.Text("`input` must be a string or an array of strings.", statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        if (inputs.Length == 0) {
-            return TypedResults.Text("`input` must not be empty.", statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        if (!inferenceService.TryCreateEmbeddings(inputs, cancellationToken, out var embeddingsTask) || embeddingsTask is null) {
-            return TypedResults.Text("Server busy", statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-
-        try {
-            var embeddings = await embeddingsTask.WaitAsync(cancellationToken);
-            var data = new EmbeddingData[embeddings.Length];
-            for (var i = 0; i < embeddings.Length; i++) {
-                data[i] = new EmbeddingData {
-                    Index = i,
-                    Embedding = embeddings[i]
-                };
-            }
-
-            return TypedResults.Ok(new EmbeddingsResponse {
-                Object = "list",
-                Data = data,
-                Model = string.IsNullOrWhiteSpace(request.Model) ? options.ModelPath : request.Model,
-                Usage = new EmbeddingsUsage {
-                    PromptTokens = 0,
-                    TotalTokens = 0
-                }
-            });
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
-            return Results.Empty;
-        }
-        catch (TimeoutException) {
-            return TypedResults.Text("Embedding request timed out.", statusCode: StatusCodes.Status504GatewayTimeout);
-        }
-    }
-
-    private static bool TryParseEmbeddingInput(JsonElement input, out string[] values) {
-        if (input.ValueKind == JsonValueKind.String) {
-            values = [input.GetString() ?? string.Empty];
-            return true;
-        }
-
-        if (input.ValueKind != JsonValueKind.Array) {
-            values = [];
-            return false;
-        }
-
-        values = new string[input.GetArrayLength()];
-        var index = 0;
-        foreach (var item in input.EnumerateArray()) {
-            if (item.ValueKind != JsonValueKind.String) {
-                values = [];
-                return false;
-            }
-
-            values[index++] = item.GetString() ?? string.Empty;
-        }
-
-        return true;
-    }
 }
+

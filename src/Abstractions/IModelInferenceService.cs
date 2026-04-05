@@ -8,9 +8,4 @@ public interface IModelInferenceService {
         bool enableThinking,
         CancellationToken cancellationToken,
         out IAsyncEnumerable<string>? responseStream);
-
-    bool TryCreateEmbeddings(
-        IReadOnlyList<string> inputs,
-        CancellationToken cancellationToken,
-        out Task<float[][]>? embeddingsTask);
 }

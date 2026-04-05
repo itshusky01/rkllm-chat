@@ -7,5 +7,5 @@ public sealed class OllamaShowResponse {
     public string Template { get; set; } = string.Empty;
     public OllamaModelDetails Details { get; set; } = new();
     public Dictionary<string, string> ModelInfo { get; set; } = [];
-    public string[] Capabilities { get; set; } = ["completion", "chat", "embeddings"];
+    public string[] Capabilities { get; set; } = ["completion", "chat"];
 }

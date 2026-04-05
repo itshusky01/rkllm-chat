@@ -7,6 +7,7 @@
     <RootNamespace>RkllmChat</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <PublishAot>true</PublishAot>
     <PublishSingleFile>true</PublishSingleFile>
@@ -14,6 +15,12 @@
     <StripSymbols>false</StripSymbols>
     <InvariantGlobalization>true</InvariantGlobalization>
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <NoWarn>$(NoWarn);IL3000;IL3053</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <OptimizationPreference>Size</OptimizationPreference>
+    <StackTraceSupport>false</StackTraceSupport>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +30,7 @@
   <ItemGroup>
     <PackageReference Include="NLog" Version="5.5.0" />
     <PackageReference Include="NLog.Extensions.Logging" Version="5.5.0" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,5 +38,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
+    <EmbeddedResource Include="MOTD.txt" />
   </ItemGroup>
 </Project>

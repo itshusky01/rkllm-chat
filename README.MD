@@ -31,10 +31,26 @@
 ```json
 {
   "Rkllm": {
+    "Server": {
+      "Host": "0.0.0.0",
+      "Port": 8080
+    },
     "ModelPath": "models/Qwen_w4a16.rkllm",
-    "Port": 8080,
     "Platform": "rk3576",
-    "MaxContextLen": 4096
+    "MaxContextLen": 4096,
+    "Llm": {
+      "MaxNewTokens": 8192,
+      "TopK": 50,
+      "TopP": 0.95,
+      "Temperature": 0.7,
+      "RepeatPenalty": 1.1
+    },
+    "VlModel": {
+      "CoreMask": 3,
+      "Width": 448,
+      "Height": 448,
+      "Path": "models/vision.rknn"
+    }
   }
 }
 ```
@@ -43,11 +59,20 @@
 
 | 字段 | 说明 |
 | --- | --- |
+| `Server.Host` | 监听地址，支持 `0.0.0.0`、`localhost` 或具体 IP |
+| `Server.Port` | 服务监听端口，默认 `8080` |
 | `ModelPath` | `.rkllm` 模型文件路径 |
-| `Port` | 服务监听端口，默认 `8080` |
 | `Platform` | 平台类型，如 `rk3576` / `rk3588` |
 | `MaxContextLen` | 最大上下文长度 |
-| `TempImageDirectory` | 多模态图片临时目录，启动时不存在会自动创建 |
+| `Llm` | 常用生成参数，例如 `Temperature`、`TopP`、`TopK` |
+| `VlModel` | 多模态视觉模型配置；不需要视觉能力时可省略 |
+
+也可以通过命令行指定配置文件路径：
+
+```bash
+./rkllm-chat-server -c /path/to/config.json
+./rkllm-chat-server --config ./configs/prod.json --debug
+```
 
 ---
 
@@ -64,10 +89,20 @@
 
 以下命令应在 RK 设备上执行：
 
-服务启动时会检查 `TempImageDirectory`，如果目录不存在会自动创建。多模态请求中的 Base64 图片会先落到该目录，再以 `<image>路径</image>` 的形式传给 RKLLM。
-
 ```bash
 dotnet run --project RkllmChat.csproj
+```
+
+如需开启调试日志：
+
+```bash
+dotnet run --project RkllmChat.csproj -- --debug
+```
+
+如需指定配置文件：
+
+```bash
+dotnet run --project RkllmChat.csproj -- -c ./config.json
 ```
 
 服务默认地址：
@@ -228,15 +263,16 @@ docker buildx build \
 
 ---
 
-## TODO
+## 当前限制
 
-- Embedding 相关接口暂时移除
+- Embedding 相关接口暂未提供
+- 服务当前一次只处理一个请求，并发请求在模型忙时会返回 `503 Server busy`
 
 ---
 
 ## 注意事项
 
-- 当前服务一次只处理一个请求；并发请求在模型忙时会返回 `503 Server busy`
-- `config.json` 中的相对模型路径会自动解析为项目目录或发布目录下的实际路径
+- `config.json` 中的相对模型路径会自动解析为配置文件所在目录下的实际路径
 - 如果前端未构建，后端仍可单独作为 API 服务运行
 - 运行环境必须是 RK 平台；仅完成编译并不表示可以在其他平台直接运行
+- `MOTD.txt` 会作为嵌入资源打包到可执行文件中，并在启动时输出

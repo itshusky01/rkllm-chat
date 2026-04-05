@@ -5,7 +5,7 @@ using NLog.Targets;
 namespace RkllmChat.Logging;
 
 internal static class NLogConfigurator {
-    public static void Configure() {
+    public static void Configure(bool enableDebugLogging = false) {
         var config = new LoggingConfiguration();
 
         var consoleTarget = new ColoredConsoleTarget("console") {
@@ -14,7 +14,7 @@ internal static class NLogConfigurator {
         };
 
         config.AddTarget(consoleTarget);
-        config.AddRuleForAllLevels(consoleTarget, "RKLLM.*");
+        config.AddRule(enableDebugLogging ? LogLevel.Debug : LogLevel.Info, LogLevel.Fatal, consoleTarget, "RkllmChat.*");
         config.AddRule(LogLevel.Warn, LogLevel.Fatal, consoleTarget, "Microsoft.*");
 
         LogManager.Configuration = config;

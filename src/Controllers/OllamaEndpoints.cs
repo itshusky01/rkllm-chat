@@ -20,19 +20,18 @@ public static class OllamaEndpoints {
         endpoints.MapPost("/api/show", ShowModel);
         endpoints.MapPost("/api/generate", GenerateAsync);
         endpoints.MapPost("/api/chat", ChatAsync);
-        // TODO: Re-enable `/api/embed` and `/api/embeddings`
         return endpoints;
     }
 
     private static IResult GetVersion() => TypedResults.Ok(new OllamaVersionResponse());
 
-    private static IResult GetTags(RkllmOptions options) {
+    private static IResult GetTags(AppOptions options) {
         return TypedResults.Ok(new OllamaTagsResponse {
             Models = [BuildModelSummary(options)]
         });
     }
 
-    private static IResult GetRunningModels(RkllmOptions options) {
+    private static IResult GetRunningModels(AppOptions options) {
         var model = BuildModelSummary(options);
         return TypedResults.Ok(new OllamaPsResponse {
             Models = [new OllamaRunningModel {
@@ -48,7 +47,7 @@ public static class OllamaEndpoints {
         });
     }
 
-    private static IResult ShowModel(RkllmOptions options) {
+    private static IResult ShowModel(AppOptions options) {
         return TypedResults.Ok(new OllamaShowResponse {
             License = "See the model distribution license.",
             Modelfile = $"FROM {options.ModelPath}\nPARAMETER num_ctx {options.MaxContextLen}",
@@ -68,7 +67,7 @@ public static class OllamaEndpoints {
         HttpContext httpContext,
         OllamaGenerateRequest request,
         IModelInferenceService inferenceService,
-        RkllmOptions options,
+        AppOptions options,
         CancellationToken cancellationToken) {
         var createdAt = DateTimeOffset.UtcNow;
         var modelName = ResolveModelName(request.Model, options);
@@ -130,7 +129,7 @@ public static class OllamaEndpoints {
         HttpContext httpContext,
         OllamaChatRequest request,
         IModelInferenceService inferenceService,
-        RkllmOptions options,
+        AppOptions options,
         CancellationToken cancellationToken) {
         var createdAt = DateTimeOffset.UtcNow;
         var modelName = ResolveModelName(request.Model, options);
@@ -188,68 +187,6 @@ public static class OllamaEndpoints {
         }
 
         return Results.Empty;
-    }
-
-    private static async Task<IResult> CreateEmbeddingsAsync(
-        EmbeddingRequest request,
-        IModelInferenceService inferenceService,
-        RkllmOptions options,
-        CancellationToken cancellationToken) {
-        if (!TryGetEmbeddingInputs(request, out var inputs)) {
-            return TypedResults.Text("`input` must be a string or an array of strings.", statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        if (!inferenceService.TryCreateEmbeddings(inputs, cancellationToken, out var embeddingsTask) || embeddingsTask is null) {
-            return TypedResults.Text("Server busy", statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-
-        try {
-            var stopwatch = Stopwatch.StartNew();
-            var embeddings = await embeddingsTask.WaitAsync(cancellationToken);
-            return TypedResults.Ok(new OllamaEmbedResponse {
-                Model = ResolveModelName(request.Model, options),
-                Embeddings = embeddings,
-                TotalDuration = ToNanoseconds(stopwatch.Elapsed),
-                LoadDuration = 0,
-                PromptEvalCount = inputs.Sum(EstimateTokenCount)
-            });
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
-            return Results.Empty;
-        }
-        catch (TimeoutException) {
-            return TypedResults.Text("Embedding request timed out.", statusCode: StatusCodes.Status504GatewayTimeout);
-        }
-    }
-
-    private static async Task<IResult> CreateLegacyEmbeddingAsync(
-        EmbeddingRequest request,
-        IModelInferenceService inferenceService,
-        CancellationToken cancellationToken) {
-        var prompt = !string.IsNullOrWhiteSpace(request.Prompt)
-            ? request.Prompt
-            : request.Input.ValueKind == JsonValueKind.String ? request.Input.GetString() : null;
-
-        if (string.IsNullOrWhiteSpace(prompt)) {
-            return TypedResults.Text("`prompt` must not be empty.", statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        if (!inferenceService.TryCreateEmbeddings([prompt], cancellationToken, out var embeddingsTask) || embeddingsTask is null) {
-            return TypedResults.Text("Server busy", statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-
-        try {
-            var embeddings = await embeddingsTask.WaitAsync(cancellationToken);
-            return TypedResults.Ok(new OllamaLegacyEmbeddingResponse {
-                Embedding = embeddings[0]
-            });
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
-            return Results.Empty;
-        }
-        catch (TimeoutException) {
-            return TypedResults.Text("Embedding request timed out.", statusCode: StatusCodes.Status504GatewayTimeout);
-        }
     }
 
     private static Message[] BuildGenerateMessages(OllamaGenerateRequest request) {
@@ -371,37 +308,7 @@ public static class OllamaEndpoints {
         await httpContext.Response.Body.FlushAsync(cancellationToken);
     }
 
-    private static bool TryGetEmbeddingInputs(EmbeddingRequest request, out string[] inputs) {
-        if (request.Input.ValueKind == JsonValueKind.String) {
-            inputs = [request.Input.GetString() ?? string.Empty];
-            return true;
-        }
-
-        if (request.Input.ValueKind == JsonValueKind.Array) {
-            inputs = new string[request.Input.GetArrayLength()];
-            var index = 0;
-            foreach (var item in request.Input.EnumerateArray()) {
-                if (item.ValueKind != JsonValueKind.String) {
-                    inputs = [];
-                    return false;
-                }
-
-                inputs[index++] = item.GetString() ?? string.Empty;
-            }
-
-            return true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.Prompt)) {
-            inputs = [request.Prompt];
-            return true;
-        }
-
-        inputs = [];
-        return false;
-    }
-
-    private static string ResolveModelName(string? requestedModel, RkllmOptions options) {
+    private static string ResolveModelName(string? requestedModel, AppOptions options) {
         if (!string.IsNullOrWhiteSpace(requestedModel)) {
             return requestedModel;
         }
@@ -410,7 +317,7 @@ public static class OllamaEndpoints {
         return string.IsNullOrWhiteSpace(fileName) ? "rkllm:latest" : $"{fileName}:latest";
     }
 
-    private static OllamaModelSummary BuildModelSummary(RkllmOptions options) {
+    private static OllamaModelSummary BuildModelSummary(AppOptions options) {
         var modelPath = options.ModelPath;
         var fileInfo = File.Exists(modelPath) ? new FileInfo(modelPath) : null;
         var digestBytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{modelPath}:{options.Platform}:{options.MaxContextLen}"));

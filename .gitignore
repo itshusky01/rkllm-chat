@@ -25,6 +25,11 @@ artifacts/
 publish/
 dist/
 
+# Frontend artifacts
+ui/node_modules/
+ui/dist/
+ui/.angular/
+
 # Logs
 *.log
 
