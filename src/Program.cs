@@ -45,9 +45,21 @@ public class Program {
             applicationConfig.Rkllm.Platform,
             applicationConfig.Rkllm.MaxContextLen,
             applicationConfig.Rkllm.Llm));
-        builder.Services.AddSingleton<RknnVisionEncoder>(serviceProvider =>
-            new RknnVisionEncoder(serviceProvider.GetRequiredService<ILogger<RknnVisionEncoder>>()));
-        builder.Services.AddSingleton<IModelInferenceService, ChatInferenceService>();
+
+        if (applicationConfig.Rkllm.VlModel is not null) {
+            builder.Services.AddSingleton<RknnVisionEncoder>(serviceProvider =>
+                new RknnVisionEncoder(serviceProvider.GetRequiredService<ILogger<RknnVisionEncoder>>()));
+        }
+
+        builder.Services.AddSingleton<ChatInferenceService>(serviceProvider =>
+            new ChatInferenceService(
+                serviceProvider.GetRequiredService<AppOptions>(),
+                serviceProvider.GetRequiredService<RkllmWrapper>(),
+                serviceProvider.GetService<RknnVisionEncoder>(),
+                serviceProvider.GetRequiredService<IPromptFormatter>(),
+                serviceProvider.GetRequiredService<ILogger<ChatInferenceService>>()));
+        builder.Services.AddSingleton<IModelInferenceService>(serviceProvider =>
+            serviceProvider.GetRequiredService<ChatInferenceService>());
 
         var app = builder.Build();
         var logger = app.Services.GetRequiredService<ILogger<Program>>();
@@ -99,6 +111,7 @@ public class Program {
             Model = options.ModelPath
         }));
 
+        app.MapProfilerEndpoints();
         app.MapOpenAIEndpoints();
         app.MapOllamaEndpoints();
 

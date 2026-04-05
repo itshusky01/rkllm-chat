@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -48,13 +48,105 @@ interface StreamChatResponse {
   }>;
 }
 
+interface ProfilerSystemInfo {
+  processId?: number;
+  machineName?: string;
+  osDescription?: string;
+  osArchitecture?: string;
+  processArchitecture?: string;
+  frameworkDescription?: string;
+  processorCount?: number;
+}
+
+interface ProfilerCpuStats {
+  processUsagePercent?: number;
+  totalProcessorTimeMs?: number;
+  threadCount?: number;
+}
+
+interface ProfilerMemoryStats {
+  workingSetMb?: number;
+  privateMemoryMb?: number;
+  managedHeapMb?: number;
+  gcTotalAvailableMb?: number;
+  systemTotalMb?: number | null;
+  systemAvailableMb?: number | null;
+}
+
+interface ProfilerRequestStats {
+  isBusy?: boolean;
+  total?: number;
+  completed?: number;
+  failed?: number;
+  cancelled?: number;
+  rejected?: number;
+  lastRequestStartedAt?: string | null;
+  lastRequestCompletedAt?: string | null;
+  lastRequestDurationMs?: number;
+  currentRequestAgeMs?: number;
+  currentMode?: string | null;
+  lastError?: string | null;
+}
+
+interface ProfilerTokenStats {
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  currentRequestInputTokens?: number;
+  currentRequestOutputTokens?: number;
+  currentOutputChars?: number;
+  currentChunkCount?: number;
+  totalChunksEmitted?: number;
+  lastRequestInputTokens?: number;
+  lastRequestOutputTokens?: number;
+  currentTokensPerSecond?: number;
+  lastRequestTokensPerSecond?: number;
+  averageTokensPerSecond?: number;
+}
+
+interface ProfilerRuntimeStats {
+  state?: string;
+  prefillTimeMs?: number;
+  prefillTokens?: number;
+  generateTimeMs?: number;
+  generateTokens?: number;
+  tokensPerSecond?: number;
+  memoryUsageMb?: number;
+  lastUpdatedAt?: string | null;
+}
+
+interface ProfilerVisionStats {
+  enabled?: boolean;
+  loaded?: boolean;
+  modelPath?: string | null;
+  width?: number | null;
+  height?: number | null;
+  coreMask?: number | null;
+}
+
+interface ProfilerResponse {
+  timestamp?: string;
+  uptimeSeconds?: number;
+  host?: string;
+  port?: number;
+  model?: string;
+  platform?: string;
+  hasVlModel?: boolean;
+  system?: ProfilerSystemInfo;
+  cpu?: ProfilerCpuStats;
+  memory?: ProfilerMemoryStats;
+  requests?: ProfilerRequestStats;
+  tokens?: ProfilerTokenStats;
+  runtime?: ProfilerRuntimeStats;
+  vision?: ProfilerVisionStats;
+}
+
 @Component({
   selector: 'app-root',
   imports: [CommonModule, FormsModule],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class App {
+export class App implements OnDestroy {
   protected readonly title = 'RKLLM Chat';
 
   protected readonly apiBase = signal('/api');
@@ -67,6 +159,10 @@ export class App {
   protected readonly refreshingModels = signal(false);
   protected readonly status = signal<'connecting' | 'ready' | 'error'>('connecting');
   protected readonly errorMessage = signal('');
+  protected readonly profilerDialogOpen = signal(false);
+  protected readonly profilerLoading = signal(false);
+  protected readonly profilerError = signal('');
+  protected readonly profiler = signal<ProfilerResponse | null>(null);
   protected readonly models = signal<string[]>([]);
   protected readonly messages = signal<ChatMessage[]>([
     this.createMessage('assistant', 'Hi, I\'m ready. Ask anything.', false)
@@ -90,9 +186,210 @@ export class App {
   });
   protected readonly chatEndpoint = computed(() => this.buildApiUrl('/chat'));
   protected readonly tagsEndpoint = computed(() => this.buildApiUrl('/tags'));
+  protected readonly profilerEndpoint = computed(() => this.buildApiUrl('/stats'));
+
+  private profilerRefreshHandle: number | null = null;
+  private profilerFetchInFlight = false;
 
   constructor() {
     void this.refreshModels();
+  }
+
+  ngOnDestroy(): void {
+    this.stopProfilerAutoRefresh();
+  }
+
+  protected async openProfilerDialog(): Promise<void> {
+    this.profilerDialogOpen.set(true);
+    await this.refreshProfiler();
+    this.startProfilerAutoRefresh();
+  }
+
+  protected closeProfilerDialog(): void {
+    this.stopProfilerAutoRefresh();
+    this.profilerDialogOpen.set(false);
+  }
+
+  protected async refreshProfiler(silent = false): Promise<void> {
+    if (this.profilerFetchInFlight) {
+      return;
+    }
+
+    this.profilerFetchInFlight = true;
+    if (!silent) {
+      this.profilerLoading.set(true);
+    }
+
+    try {
+      const response = await fetch(this.profilerEndpoint(), { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      this.profiler.set(this.normalizeProfilerResponse(payload));
+      this.profilerError.set('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load profiler data';
+      this.profilerError.set(`Failed to load profiler: ${message}`);
+    } finally {
+      this.profilerFetchInFlight = false;
+      if (!silent) {
+        this.profilerLoading.set(false);
+      }
+    }
+  }
+
+  protected formatNumber(value: number | null | undefined, fractionDigits = 2): string {
+    if (value == null || Number.isNaN(value)) {
+      return '—';
+    }
+
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: fractionDigits
+    }).format(value);
+  }
+
+  protected formatDateTime(value: string | null | undefined): string {
+    if (!value) {
+      return '—';
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  }
+
+  private normalizeProfilerResponse(payload: Record<string, unknown>): ProfilerResponse {
+    const system = this.readObject(payload, 'system');
+    const cpu = this.readObject(payload, 'cpu');
+    const memory = this.readObject(payload, 'memory');
+    const requests = this.readObject(payload, 'requests');
+    const tokens = this.readObject(payload, 'tokens');
+    const runtime = this.readObject(payload, 'runtime');
+    const vision = this.readObject(payload, 'vision');
+
+    return {
+      timestamp: this.readString(payload, 'timestamp'),
+      uptimeSeconds: this.readNumber(payload, 'uptimeSeconds', 'uptime_seconds'),
+      host: this.readString(payload, 'host'),
+      port: this.readNumber(payload, 'port'),
+      model: this.readString(payload, 'model'),
+      platform: this.readString(payload, 'platform'),
+      hasVlModel: this.readBoolean(payload, 'hasVlModel', 'has_vl_model'),
+      system: {
+        processId: this.readNumber(system, 'processId', 'process_id'),
+        machineName: this.readString(system, 'machineName', 'machine_name'),
+        osDescription: this.readString(system, 'osDescription', 'os_description'),
+        osArchitecture: this.readString(system, 'osArchitecture', 'os_architecture'),
+        processArchitecture: this.readString(system, 'processArchitecture', 'process_architecture'),
+        frameworkDescription: this.readString(system, 'frameworkDescription', 'framework_description'),
+        processorCount: this.readNumber(system, 'processorCount', 'processor_count')
+      },
+      cpu: {
+        processUsagePercent: this.readNumber(cpu, 'processUsagePercent', 'process_usage_percent'),
+        totalProcessorTimeMs: this.readNumber(cpu, 'totalProcessorTimeMs', 'total_processor_time_ms'),
+        threadCount: this.readNumber(cpu, 'threadCount', 'thread_count')
+      },
+      memory: {
+        workingSetMb: this.readNumber(memory, 'workingSetMb', 'working_set_mb'),
+        privateMemoryMb: this.readNumber(memory, 'privateMemoryMb', 'private_memory_mb'),
+        managedHeapMb: this.readNumber(memory, 'managedHeapMb', 'managed_heap_mb'),
+        gcTotalAvailableMb: this.readNumber(memory, 'gcTotalAvailableMb', 'gc_total_available_mb'),
+        systemTotalMb: this.readNumber(memory, 'systemTotalMb', 'system_total_mb'),
+        systemAvailableMb: this.readNumber(memory, 'systemAvailableMb', 'system_available_mb')
+      },
+      requests: {
+        isBusy: this.readBoolean(requests, 'isBusy', 'is_busy'),
+        total: this.readNumber(requests, 'total'),
+        completed: this.readNumber(requests, 'completed'),
+        failed: this.readNumber(requests, 'failed'),
+        cancelled: this.readNumber(requests, 'cancelled'),
+        rejected: this.readNumber(requests, 'rejected'),
+        lastRequestStartedAt: this.readString(requests, 'lastRequestStartedAt', 'last_request_started_at'),
+        lastRequestCompletedAt: this.readString(requests, 'lastRequestCompletedAt', 'last_request_completed_at'),
+        lastRequestDurationMs: this.readNumber(requests, 'lastRequestDurationMs', 'last_request_duration_ms'),
+        currentRequestAgeMs: this.readNumber(requests, 'currentRequestAgeMs', 'current_request_age_ms'),
+        currentMode: this.readString(requests, 'currentMode', 'current_mode'),
+        lastError: this.readString(requests, 'lastError', 'last_error')
+      },
+      tokens: {
+        totalInputTokens: this.readNumber(tokens, 'totalInputTokens', 'total_input_tokens'),
+        totalOutputTokens: this.readNumber(tokens, 'totalOutputTokens', 'total_output_tokens'),
+        currentRequestInputTokens: this.readNumber(tokens, 'currentRequestInputTokens', 'current_request_input_tokens'),
+        currentRequestOutputTokens: this.readNumber(tokens, 'currentRequestOutputTokens', 'current_request_output_tokens'),
+        currentOutputChars: this.readNumber(tokens, 'currentOutputChars', 'current_output_chars'),
+        currentChunkCount: this.readNumber(tokens, 'currentChunkCount', 'current_chunk_count'),
+        totalChunksEmitted: this.readNumber(tokens, 'totalChunksEmitted', 'total_chunks_emitted'),
+        lastRequestInputTokens: this.readNumber(tokens, 'lastRequestInputTokens', 'last_request_input_tokens'),
+        lastRequestOutputTokens: this.readNumber(tokens, 'lastRequestOutputTokens', 'last_request_output_tokens'),
+        currentTokensPerSecond: this.readNumber(tokens, 'currentTokensPerSecond', 'current_tokens_per_second'),
+        lastRequestTokensPerSecond: this.readNumber(tokens, 'lastRequestTokensPerSecond', 'last_request_tokens_per_second'),
+        averageTokensPerSecond: this.readNumber(tokens, 'averageTokensPerSecond', 'average_tokens_per_second')
+      },
+      runtime: {
+        state: this.readString(runtime, 'state'),
+        prefillTimeMs: this.readNumber(runtime, 'prefillTimeMs', 'prefill_time_ms'),
+        prefillTokens: this.readNumber(runtime, 'prefillTokens', 'prefill_tokens'),
+        generateTimeMs: this.readNumber(runtime, 'generateTimeMs', 'generate_time_ms'),
+        generateTokens: this.readNumber(runtime, 'generateTokens', 'generate_tokens'),
+        tokensPerSecond: this.readNumber(runtime, 'tokensPerSecond', 'tokens_per_second'),
+        memoryUsageMb: this.readNumber(runtime, 'memoryUsageMb', 'memory_usage_mb'),
+        lastUpdatedAt: this.readString(runtime, 'lastUpdatedAt', 'last_updated_at')
+      },
+      vision: {
+        enabled: this.readBoolean(vision, 'enabled'),
+        loaded: this.readBoolean(vision, 'loaded'),
+        modelPath: this.readString(vision, 'modelPath', 'model_path'),
+        width: this.readNumber(vision, 'width'),
+        height: this.readNumber(vision, 'height'),
+        coreMask: this.readNumber(vision, 'coreMask', 'core_mask')
+      }
+    };
+  }
+
+  private readObject(source: Record<string, unknown>, ...keys: string[]): Record<string, unknown> {
+    for (const key of keys) {
+      const value = source[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+    }
+
+    return {};
+  }
+
+  private readNumber(source: Record<string, unknown>, ...keys: string[]): number | undefined {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'number') {
+        return value;
+      }
+    }
+
+    return undefined;
+  }
+
+  private readString(source: Record<string, unknown>, ...keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'string') {
+        return value;
+      }
+    }
+
+    return undefined;
+  }
+
+  private readBoolean(source: Record<string, unknown>, ...keys: string[]): boolean | undefined {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'boolean') {
+        return value;
+      }
+    }
+
+    return undefined;
   }
 
   protected async refreshModels(): Promise<void> {
@@ -464,6 +761,20 @@ export class App {
     }
 
     return `${base}${suffix}`;
+  }
+
+  private startProfilerAutoRefresh(): void {
+    this.stopProfilerAutoRefresh();
+    this.profilerRefreshHandle = window.setInterval(() => {
+      void this.refreshProfiler(true);
+    }, 2000);
+  }
+
+  private stopProfilerAutoRefresh(): void {
+    if (this.profilerRefreshHandle !== null) {
+      window.clearInterval(this.profilerRefreshHandle);
+      this.profilerRefreshHandle = null;
+    }
   }
 
   private createMessage(

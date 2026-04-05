@@ -1,0 +1,18 @@
+[Unit]
+Description=RKLLM Chat Inference Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rkllm-chat
+EnvironmentFile=-/etc/default/rkllm-chat
+ExecStart=/opt/rkllm-chat/run-service.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGINT
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

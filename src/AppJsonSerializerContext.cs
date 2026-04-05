@@ -17,6 +17,7 @@ namespace RkllmChat;
 [JsonSerializable(typeof(OllamaChatRequest))]
 [JsonSerializable(typeof(OllamaGenerateRequest))]
 [JsonSerializable(typeof(ServiceInfoResponse))]
+[JsonSerializable(typeof(ProfilerResponse))]
 [JsonSerializable(typeof(ChatCompletionChunkResponse))]
 [JsonSerializable(typeof(OllamaVersionResponse))]
 [JsonSerializable(typeof(OllamaTagsResponse))]

@@ -1,0 +1,27 @@
+namespace RkllmChat;
+
+public readonly record struct RequestStatsSnapshot(
+    bool IsBusy,
+    long TotalRequests,
+    long CompletedRequests,
+    long FailedRequests,
+    long CancelledRequests,
+    long RejectedRequests,
+    DateTimeOffset? LastRequestStartedAt,
+    DateTimeOffset? LastRequestCompletedAt,
+    double LastRequestDurationMs,
+    string? LastError,
+    double CurrentRequestAgeMs,
+    string? CurrentRequestMode,
+    long TotalEstimatedInputTokens,
+    long TotalEstimatedOutputTokens,
+    int CurrentRequestInputTokens,
+    long CurrentRequestOutputTokens,
+    long CurrentOutputCharacters,
+    long TotalChunksEmitted,
+    long CurrentChunkCount,
+    long LastRequestInputTokens,
+    long LastRequestOutputTokens,
+    double CurrentTokensPerSecond,
+    double LastRequestTokensPerSecond,
+    double AverageTokensPerSecond);

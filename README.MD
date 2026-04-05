@@ -199,12 +199,13 @@ chmod +x scripts/build.sh
 1. 构建 Angular UI
 2. 执行 `dotnet publish`
 3. 将前端产物复制到 `publish/wwwroot`
-4. 在 `dist/` 下生成压缩包
+4. 在 `dist/` 下生成压缩包和 `.deb` 安装包
 
 默认输出示例：
 
 ```text
 dist/rkllm-linux-arm64.tar.gz
+dist/rkllm-chat_0.1.0_arm64.deb
 ```
 
 发布目录中的服务可执行文件名为：
@@ -213,10 +214,48 @@ dist/rkllm-linux-arm64.tar.gz
 rkllm-chat-server
 ```
 
+也可以单独构建 Debian 包：
+
+```bash
+CONFIGURATION=Release RUNTIME=linux-arm64 ./scripts/build.sh deb
+# 或者
+PACKAGE_VERSION=0.1.0 ./scripts/package-deb.sh
+```
+
 也可以通过环境变量覆盖目标运行时：
 
 ```bash
 CONFIGURATION=Release RUNTIME=linux-arm64 ./scripts/build.sh
+```
+
+### 安装 `.deb` 并启用 `systemd`
+
+```bash
+sudo dpkg -i dist/rkllm-chat_0.1.0_arm64.deb
+sudo systemctl daemon-reload
+sudo systemctl enable --now rkllm-chat.service
+sudo systemctl status rkllm-chat.service
+```
+
+服务默认：
+
+- 安装目录：`/opt/rkllm-chat`
+- 服务名：`rkllm-chat.service`
+- 可选环境文件：`/etc/default/rkllm-chat`
+
+> `.deb` 默认**不打包任何 `.so` / `libs` 动态库**，需要在目标 RK 设备自行提供对应运行库。
+> 默认会保留 `models/`；如也不想带模型，可用：`INCLUDE_MODELS=0 ./scripts/package-deb.sh`
+
+如需追加参数（例如 `--debug` 或指定配置文件），编辑：
+
+```bash
+sudo nano /etc/default/rkllm-chat
+```
+
+例如：
+
+```bash
+RKLLM_CHAT_ARGS="--debug --config /opt/rkllm-chat/config.json"
 ```
 
 ### 使用 Docker 导出编译产物

@@ -17,9 +17,10 @@ MODE=${1:-all}
 print_usage() {
     cat <<EOF
 Usage:
-  ./scripts/build.sh                # build frontend + backend + package
+  ./scripts/build.sh                # build frontend + backend + tar.gz + .deb
   ./scripts/build.sh frontend       # build Angular UI only
   ./scripts/build.sh backend        # build .NET backend only
+  ./scripts/build.sh deb            # build frontend + backend + .deb package
   ./scripts/build.sh all            # same as default
 
 You can still pass extra dotnet publish args after the mode, for example:
@@ -29,15 +30,19 @@ EOF
 
 case "$MODE" in
     frontend|front|ui)
-        shift
+        [ "$#" -gt 0 ] && shift
         MODE=frontend
         ;;
     backend|back|server|api)
-        shift
+        [ "$#" -gt 0 ] && shift
         MODE=backend
         ;;
+    deb|package|pkg)
+        [ "$#" -gt 0 ] && shift
+        MODE=deb
+        ;;
     all)
-        shift
+        [ "$#" -gt 0 ] && shift
         MODE=all
         ;;
     -h|--help|help)
@@ -92,7 +97,7 @@ build_backend() {
     dotnet publish "$PROJECT_FILE" -c "$CONFIGURATION" -r "$RUNTIME" /p:PublishAot=true /p:StripSymbols=false "$@"
 }
 
-package_all() {
+prepare_wwwroot() {
     UI_DIST_DIR=$(resolve_ui_dist_dir || true)
     if [ -z "$UI_DIST_DIR" ] || [ ! -d "$UI_DIST_DIR" ]; then
         echo "UI build output not found under $UI_DIR/dist" >&2
@@ -103,6 +108,10 @@ package_all() {
     rm -rf "$PUBLISH_DIR/wwwroot"
     mkdir -p "$PUBLISH_DIR/wwwroot"
     cp -a "$UI_DIST_DIR"/. "$PUBLISH_DIR/wwwroot/"
+}
+
+package_tarball() {
+    prepare_wwwroot
 
     printf '\n==> Creating tar.gz package\n'
     rm -rf "$PACKAGE_DIR"
@@ -114,6 +123,13 @@ package_all() {
     printf '\nPackage created: %s\n' "$ARCHIVE_PATH"
 }
 
+package_deb() {
+    prepare_wwwroot
+    chmod +x "$ROOT_DIR/scripts/package-deb.sh" "$ROOT_DIR/scripts/run-service.sh"
+    CONFIGURATION="$CONFIGURATION" RUNTIME="$RUNTIME" FRAMEWORK="$FRAMEWORK" PROJECT_FILE="$PROJECT_FILE" \
+        "$ROOT_DIR/scripts/package-deb.sh"
+}
+
 case "$MODE" in
     frontend)
         build_frontend
@@ -121,10 +137,16 @@ case "$MODE" in
     backend)
         build_backend "$@"
         ;;
+    deb)
+        build_frontend
+        build_backend "$@"
+        package_deb
+        ;;
     all)
         build_frontend
         build_backend "$@"
-        package_all
+        package_tarball
+        package_deb
         ;;
 esac
 

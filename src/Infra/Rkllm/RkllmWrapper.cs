@@ -7,10 +7,14 @@ namespace RkllmChat.Infra.Rkllm;
 public sealed class RkllmWrapper : IDisposable {
     private readonly RkllmResultCallback _callback;
     private readonly List<IntPtr> _persistentAllocations = [];
+    private readonly object _performanceLock = new();
+    private RkllmPerfStat _lastPerformance;
     private IntPtr _handle;
     private bool _disposed;
 
     public LlmCallState GlobalState { get; private set; } = (LlmCallState)(-1);
+    public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? LastPerformanceUpdatedAt { get; private set; }
 
     public event Action<string>? TextGenerated;
     public event Action<LlmCallState>? StateChanged;
@@ -174,6 +178,12 @@ public sealed class RkllmWrapper : IDisposable {
         return RkllmNativeMethods.Abort(_handle);
     }
 
+    public RkllmPerfStat GetLastPerformance() {
+        lock (_performanceLock) {
+            return _lastPerformance;
+        }
+    }
+
     public void Dispose() {
         if (_disposed) {
             return;
@@ -208,6 +218,7 @@ public sealed class RkllmWrapper : IDisposable {
         }
 
         var result = Marshal.PtrToStructure<RkllmResult>(resultPtr);
+        UpdatePerformance(result.Performance);
 
         if (state == LlmCallState.Normal && result.Text != IntPtr.Zero) {
             var text = Marshal.PtrToStringUTF8(result.Text);
@@ -217,6 +228,21 @@ public sealed class RkllmWrapper : IDisposable {
         }
 
         return 0;
+    }
+
+    private void UpdatePerformance(RkllmPerfStat performance) {
+        if (performance.PrefillTimeMs <= 0 &&
+            performance.PrefillTokens <= 0 &&
+            performance.GenerateTimeMs <= 0 &&
+            performance.GenerateTokens <= 0 &&
+            performance.MemoryUsageMb <= 0) {
+            return;
+        }
+
+        lock (_performanceLock) {
+            _lastPerformance = performance;
+            LastPerformanceUpdatedAt = DateTimeOffset.UtcNow;
+        }
     }
 
     private IntPtr AllocPersistentUtf8(string? value) {
