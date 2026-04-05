@@ -12,7 +12,6 @@ DIST_DIR="$ROOT_DIR/dist"
 PUBLISH_DIR="$ROOT_DIR/bin/$CONFIGURATION/$FRAMEWORK/$RUNTIME/publish"
 UI_DIR="$ROOT_DIR/ui"
 SERVICE_NAME="$APP_NAME.service"
-INCLUDE_MODELS=${INCLUDE_MODELS:-1}
 PACKAGE_VERSION=${PACKAGE_VERSION:-$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$ROOT_DIR/$PROJECT_FILE" | head -n 1)}
 PACKAGE_VERSION=${PACKAGE_VERSION:-0.1.0}
 MAINTAINER=${MAINTAINER:-RKLLM Chat Maintainers <noreply@example.com>}
@@ -115,16 +114,6 @@ EOF
     chmod 0755 "$debian_dir/postinst" "$debian_dir/prerm" "$debian_dir/postrm"
 }
 
-copy_optional_dir() {
-    source_dir=$1
-    target_dir=$2
-
-    if [ -d "$source_dir" ]; then
-        mkdir -p "$target_dir"
-        cp -a "$source_dir"/. "$target_dir/"
-    fi
-}
-
 main() {
     if ! command -v dpkg-deb >/dev/null 2>&1; then
         echo 'dpkg-deb is required to build the .deb package.' >&2
@@ -150,10 +139,6 @@ main() {
 
     cp -a "$PUBLISH_DIR"/. "$APP_DIR/"
     find "$APP_DIR" -type f \( -name '*.so' -o -name '*.so.*' \) -delete
-
-    if [ "$INCLUDE_MODELS" = "1" ]; then
-        copy_optional_dir "$ROOT_DIR/models" "$APP_DIR/models"
-    fi
 
     install -m 0755 "$ROOT_DIR/scripts/run-service.sh" "$APP_DIR/run-service.sh"
     install -m 0644 "$ROOT_DIR/packaging/systemd/rkllm-chat.service" "$SYSTEMD_DIR/$SERVICE_NAME"

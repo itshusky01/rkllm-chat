@@ -243,8 +243,17 @@ sudo systemctl status rkllm-chat.service
 - 服务名：`rkllm-chat.service`
 - 可选环境文件：`/etc/default/rkllm-chat`
 
-> `.deb` 默认**不打包任何 `.so` / `libs` 动态库**，需要在目标 RK 设备自行提供对应运行库。
-> 默认会保留 `models/`；如也不想带模型，可用：`INCLUDE_MODELS=0 ./scripts/package-deb.sh`
+> `.deb` 默认**不打包任何 `.so` / `libs` 动态库**，也**不提供任何模型文件**。
+> 目标 RK 设备需要自行准备运行库和 `.rkllm` / `.rknn` 模型，并按你的部署路径修改 `config.json`。
+
+安装完成后，请在目标设备**自行准备模型和运行库**，例如：
+
+```bash
+sudo mkdir -p /opt/rkllm-chat/models
+# 自行复制你的模型
+# /opt/rkllm-chat/models/Qwen_w4a16.rkllm
+# 并确保系统库路径中可找到 librkllmrt.so 等运行库
+```
 
 如需追加参数（例如 `--debug` 或指定配置文件），编辑：
 
@@ -312,6 +321,7 @@ docker buildx build \
 ## 注意事项
 
 - `config.json` 中的相对模型路径会自动解析为配置文件所在目录下的实际路径
+- `.deb` 安装包默认不包含模型文件与 `.so` 运行库，请在目标设备单独准备
 - 如果前端未构建，后端仍可单独作为 API 服务运行
 - 运行环境必须是 RK 平台；仅完成编译并不表示可以在其他平台直接运行
 - `MOTD.txt` 会作为嵌入资源打包到可执行文件中，并在启动时输出
